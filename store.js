@@ -83,6 +83,7 @@
 
   // ---------- 状態(メモリ上のキャッシュ) ----------
   let session = null;
+  let authUser = null; // 認証側の最新のユーザー情報(メールの確認状況など)。マイページで取得する
   let me = null; // get_me() の結果。未ログインは null
   let lastUid = null;
   let notices = [];
@@ -105,10 +106,14 @@
     const status = err && err.status;
     if (err && err.code === 'PGRST202') return 'サーバーの設定が完了していません(supabase/schema.sql を実行してください)';
     if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(m)) return 'サーバーに接続できませんでした。通信状況を確認してください';
-    if (/Anonymous sign-ins are disabled/i.test(m)) return '現在、新規登録を受け付けていません(管理者にお知らせください)';
-    if (/rate limit|too many requests|over_.*_rate_limit/i.test(m) || status === 429) return '短時間に操作が集中しています。しばらく待ってからもう一度お試しください';
-    if (/JWT expired|invalid JWT/i.test(m)) return 'ログインの有効期限が切れました。もう一度ログインしてください';
-    if (/Signups not allowed|signup.*disabled/i.test(m)) return '現在、新規登録を受け付けていません';
+    if (/Invalid login credentials/i.test(m)) return 'メールアドレスまたはパスワードが違います';
+    if (/Email not confirmed/i.test(m)) return 'メールアドレスの確認が完了していません。届いた確認メールのリンクを開いてください';
+    if (/User already registered|already been registered|email_exists/i.test(m)) return 'このメールアドレスは既に登録されています';
+    if (/Password should be at least|weak_password|Password is too weak/i.test(m)) return 'パスワードが弱すぎます。8文字以上で、推測されにくいものにしてください';
+    if (/different from the old password|same as the old password|same_password/i.test(m)) return '今のパスワードと同じです。別のパスワードにしてください';
+    if (/rate limit|too many requests|over_.*_rate_limit|security purposes/i.test(m) || status === 429) return '短時間に操作が集中しています。しばらく(数分〜1時間)待ってからもう一度お試しください';
+    if (/JWT expired|invalid JWT|Auth session missing/i.test(m)) return 'ログインの有効期限が切れました。もう一度ログインしてください';
+    if (/Signups not allowed|signup.*disabled|provider is not enabled|Email signups are disabled/i.test(m)) return '現在、新規登録を受け付けていません(管理者にお知らせください)';
     return m || '予期しないエラーが起きました';
   }
 
@@ -139,7 +144,13 @@
 
   function currentUser() {
     if (!me) return null;
-    return Object.assign(publicUser(me), { createdAt: me.createdAt });
+    const au = authUser || (session && session.user) || {};
+    return Object.assign(publicUser(me), {
+      createdAt: me.createdAt,
+      email: au.email || '',
+      pendingEmail: au.new_email || '', // 確認メールを送ったが、まだリンクを開いていないメールアドレス
+      isAnonymous: !!au.is_anonymous, // メール未登録の匿名アカウント(以前の「ニックネームだけ」で作ったもの)
+    });
   }
 
   function missions() {
@@ -202,30 +213,109 @@
     }
   }
 
-  // はじめる: ニックネームだけで始める(Supabase の匿名ログイン)。
-  // メールもパスワードも使わない。アカウントはこのブラウザにだけ保存され、
-  // ログアウトやブラウザのデータ削除をすると同じアカウントには戻れない。
+  // ---------- 入力チェック(メール・ニックネーム・パスワード) ----------
+  const cleanEmail = (v) => {
+    const e = String(v || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw new Error('メールアドレスの形式が正しくありません');
+    return e;
+  };
+  const checkPassword = (v) => {
+    const p = String(v || '');
+    if (p.length < 8) throw new Error('パスワードは8文字以上で入力してください');
+    if (p.length > 72) throw new Error('パスワードは72文字以内で入力してください');
+    return p;
+  };
+  const checkNickname = (v) => {
+    const n = String(v || '').trim();
+    if (n.length < 2 || n.length > 16) throw new Error('ニックネームは2〜16文字で入力してください');
+    return n;
+  };
+  // メールのリンクから戻ってくる先(このページのURL。# と ? は除く)
+  const backUrl = () => location.href.split('#')[0].split('?')[0];
+
+  // 新規登録(メール+パスワード)。確認メールのリンクを開くまでログインできない設定なら { confirmed:false }
   async function register(input) {
-    const nickname = String(input.nickname || '').trim();
-    if (nickname.length < 2 || nickname.length > 16) throw new Error('ニックネームは2〜16文字で入力してください');
+    const email = cleanEmail(input.email);
+    const nickname = checkNickname(input.nickname);
+    const password = checkPassword(input.password);
     const msg = await rpc('nickname_available', { p_nick: nickname });
     if (msg) throw new Error(msg);
 
-    const { data, error } = await sb.auth.signInAnonymously({ options: { data: { nickname } } });
+    const { data, error } = await sb.auth.signUp({
+      email,
+      password,
+      options: { data: { nickname }, emailRedirectTo: backUrl() },
+    });
     if (error) throw new Error(explain(error));
+    // 確認メールが有効なとき、登録済みのアドレスはエラーにならず identities が空で返る
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      throw new Error('このメールアドレスは既に登録されています');
+    }
+    if (!data.session) return { confirmed: false };
     session = data.session;
     lastUid = uidOf(session);
     await refreshMe();
-    if (!me) throw new Error('アカウントの作成に失敗しました。もう一度お試しください');
     notices.push({ type: 'points', amount: RULES.register, reason: '新規登録ボーナス' });
+    return { confirmed: true };
+  }
+
+  async function login(emailIn, passwordIn) {
+    const { data, error } = await sb.auth.signInWithPassword({
+      email: String(emailIn || '').trim().toLowerCase(),
+      password: String(passwordIn || ''),
+    });
+    if (error) throw new Error(explain(error));
+    session = data.session;
+    lastUid = uidOf(session);
+    authUser = null;
+    await refreshMe();
+    await dailyBonus();
   }
 
   async function logout() {
     await sb.auth.signOut();
     session = null;
+    authUser = null;
     me = null;
     lastUid = null;
     cache.profile = null;
+  }
+
+  // パスワードを忘れたとき: 再設定用のメールを送る(登録の有無は答えない)
+  async function sendResetEmail(emailIn) {
+    const email = cleanEmail(emailIn);
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: backUrl() });
+    if (error) throw new Error(explain(error));
+  }
+
+  // ログイン中のパスワード変更(再設定メールのリンクから来た場合も含む)
+  async function updatePassword(passwordIn) {
+    const password = checkPassword(passwordIn);
+    const { error } = await sb.auth.updateUser({ password });
+    if (error) throw new Error(explain(error));
+  }
+
+  // 匿名アカウント(以前の「ニックネームだけ」)に、メールとパスワードを登録して引き継ぐ。
+  // ポイント・管理者権限はそのまま。確認メールのリンクを開くと完了する。
+  async function upgradeAccount(input) {
+    const email = cleanEmail(input.email);
+    const password = checkPassword(input.password);
+    const { error } = await sb.auth.updateUser({ email, password }, { emailRedirectTo: backUrl() });
+    if (error) throw new Error(explain(error));
+    await loadAuthUser();
+  }
+
+  async function changeNickname(nickIn) {
+    const nickname = checkNickname(nickIn);
+    await rpc('update_nickname', { p_nick: nickname });
+    await refreshMe();
+  }
+
+  // 認証側の最新のユーザー情報(メールの確認状況)を取り直す
+  async function loadAuthUser() {
+    if (!session) { authUser = null; return; }
+    const { data, error } = await sb.auth.getUser();
+    authUser = error ? null : data.user;
   }
 
   // 1日1回のログインボーナス
@@ -283,7 +373,8 @@
 
   async function loadProfile() {
     if (!session) { cache.profile = null; return; }
-    cache.profile = await rpc('my_profile');
+    const [prof] = await Promise.all([rpc('my_profile'), loadAuthUser()]);
+    cache.profile = prof;
   }
 
   async function loadAdmin() {
@@ -413,7 +504,8 @@
     ready, configProblem,
     init, onAuthChange, load,
     currentUser, missions, todayTopic,
-    register, logout, dailyBonus,
+    register, login, logout, dailyBonus,
+    sendResetEmail, updatePassword, upgradeAccount, changeNickname,
     listThreads, getThread, ranking, myProfile, listReported, getNgWords,
     createThread, createReply, toggleLike, setBest, report,
     hidePost, restorePost, setNgWords,

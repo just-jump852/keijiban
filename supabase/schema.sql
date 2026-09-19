@@ -658,6 +658,25 @@ begin
   return true;
 end $$;
 
+-- ニックネームの変更(マイページ)。長さ・NGワード・重複を検査する
+create or replace function public.update_nickname(p_nick text) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  u uuid := public.require_user();
+  n text := btrim(coalesce(p_nick, ''));
+begin
+  if char_length(n) < 2 or char_length(n) > 16 then
+    raise exception 'ニックネームは2〜16文字で入力してください';
+  end if;
+  if public.find_ng(n) is not null then
+    raise exception 'このニックネームは使用できません';
+  end if;
+  if exists (select 1 from public.profiles where lower(nickname) = lower(n) and id <> u) then
+    raise exception 'このニックネームは既に使われています';
+  end if;
+  update public.profiles set nickname = n where id = u;
+end $$;
+
 -- 通報。規定数に達した投稿は自動で非表示にする
 create or replace function public.report_post(p_post uuid, p_reason text) returns void
 language plpgsql security definer set search_path = public, pg_temp as $$
@@ -804,6 +823,7 @@ grant execute on function public.create_reply(uuid, text)          to authentica
 grant execute on function public.toggle_like(uuid)                 to authenticated;
 grant execute on function public.set_best(uuid, uuid)              to authenticated;
 grant execute on function public.report_post(uuid, text)           to authenticated;
+grant execute on function public.update_nickname(text)             to authenticated;
 
 -- 管理者(関数内でも管理者かどうかを確認する)
 grant execute on function public.admin_list_reported()             to authenticated;

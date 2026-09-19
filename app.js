@@ -15,7 +15,8 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const nl2br = (s) => esc(s).replace(/\n/g, '<br>');
 
-  const state = { cat: '', q: '', sort: 'new', rank: 'total' };
+  const state = { cat: '', q: '', sort: 'new', rank: 'total', notice: '' };
+  const RECOVERY_KEY = 'keijiban_recovery_v1'; // パスワード再設定メールを送った印(リンクで戻ったときに判別する)
   let pageTitle = 'ひろば掲示板';
   let bumpUntil = 0; // ポイントが増えた直後、ヘッダーのポイント表示を弾ませる
   let popId = null; // いいねした投稿(ハートを弾ませる)
@@ -134,7 +135,7 @@
     const acct = !S.ready ? '' : me
       ? `<a class="pchip ${Date.now() < bumpUntil ? 'bump' : ''}" href="#/me" aria-label="マイページ(${me.points}ポイント)">${ringAvatar(me, 'sm')}<span class="pchip-t"><b>Lv.${me.level.lv}</b><small>${me.points}pt</small></span></a>
          <a class="btn cta sm desk" href="#/new">${ico('pen')}投稿する</a>`
-      : `<a class="btn cta sm" href="#/register">はじめる</a>`;
+      : `<a class="btn ghost sm" href="#/login">ログイン</a><a class="btn cta sm" href="#/register">新規登録</a>`;
     $('#header').innerHTML = `<div class="wrap bar">
       <a class="brand" href="#/"><span class="logo"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-6l-4 3.5V17H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg></span>ひろば</a>
       <nav class="nav desk" aria-label="ページ">${nav('#/', 'ホーム', '')}${nav('#/ranking', 'ランキング', 'ranking')}${nav('#/rules', 'ポイントのしくみ', 'rules')}${me && me.isAdmin ? nav('#/admin', '管理', 'admin') : ''}</nav>
@@ -144,7 +145,7 @@
     const tab = (href, icon, label, key) => `<a href="${href}" class="${seg === key ? 'on' : ''}" ${seg === key ? 'aria-current="page"' : ''}>${ico(icon)}<span>${label}</span></a>`;
     $('#tabbar').innerHTML = `${tab('#/', 'home', 'ホーム', '')}${tab('#/ranking', 'trophy', 'ランキング', 'ranking')}
       <a class="fab" href="#/new" aria-label="スレッドを立てる">${ico('plus')}</a>
-      ${tab('#/rules', 'gift', 'ポイント', 'rules')}${me ? tab('#/me', 'user', 'マイページ', 'me') : tab('#/register', 'user', 'はじめる', 'register')}`;
+      ${tab('#/rules', 'gift', 'ポイント', 'rules')}${me ? tab('#/me', 'user', 'マイページ', 'me') : tab('#/login', 'user', 'ログイン', 'login')}`;
   }
 
   // ---------- 共通ブロック ----------
@@ -176,7 +177,7 @@
 
   function needLogin(msg) {
     return `<div class="card narrow empty"><span class="big">🔑</span><p>${esc(msg)}</p>
-      <div class="row" style="justify-content:center"><a class="btn cta" href="#/register">はじめる +${R.register}pt</a></div></div>`;
+      <div class="row" style="justify-content:center"><a class="btn cta" href="#/login">ログイン</a><a class="btn" href="#/register">新規登録で +${R.register}pt</a></div></div>`;
   }
   function notFound() {
     return '<div class="card narrow empty"><span class="big">🧭</span><p>ページが見つかりませんでした。</p><a class="btn brand" href="#/">ホームに戻る</a></div>';
@@ -237,7 +238,7 @@
     return `<section class="card hero">
       <h1>あなたの一言が、<br>誰かの<em>ヒント</em>になる。</h1>
       <p>投稿・返信・いいねでポイントがたまる、みんなの意見交換ひろば。ゆるく、気軽に、話してみませんか?</p>
-      <div class="row"><a class="btn light lg" href="#/register">ニックネームだけで はじめる +${R.register}pt</a></div>
+      <div class="row"><a class="btn light lg" href="#/register">無料で登録して +${R.register}pt</a><a class="btn ghost" style="color:#fff;border-color:rgba(255,255,255,.5)" href="#/login">ログイン</a></div>
       <ul class="hero-points"><li><b>+${R.thread}</b>スレッドを立てる</li><li><b>+${R.reply}</b>返信する</li><li><b>+${R.best}</b>ベストアンサー</li></ul>
     </section>`;
   }
@@ -263,7 +264,7 @@
   function joinCard() {
     return `<section class="card join"><h3>ポイントをためよう</h3>
       <ul><li>ニックネームを決めるだけで +${R.register}pt</li><li>投稿・返信・いいねでポイントが増える</li><li>レベルアップ・ランキングで称号をゲット</li></ul>
-      <a class="btn cta block" href="#/register">はじめる</a></section>`;
+      <a class="btn cta block" href="#/register">無料で登録する</a><p class="small muted" style="margin:10px 0 0;text-align:center">登録済みの方は<a href="#/login">ログイン</a></p></section>`;
   }
 
   function rankCard() {
@@ -350,8 +351,8 @@
           <div class="row between"><span class="small muted">Ctrl+Enter でも送信できます</span>
             <button class="btn cta">返信する<span class="chip-pt">+${R.reply}pt</span></button></div>
         </form>`
-      : `<div class="card replybox" id="reply-box"><p style="margin:0 0 12px"><b>返信するには、ニックネームを決めて はじめてください。</b><br><span class="muted small">メール・パスワードは不要。はじめると ${R.register}pt もらえます。</span></p>
-          <div class="row"><a class="btn cta" href="#/register">はじめる</a></div></div>`;
+      : `<div class="card replybox" id="reply-box"><p style="margin:0 0 12px"><b>返信するにはログインが必要です。</b><br><span class="muted small">登録すると ${R.register}pt もらえます。</span></p>
+          <div class="row"><a class="btn cta" href="#/register">無料で登録する</a><a class="btn" href="#/login">ログイン</a></div></div>`;
     const others = S.listThreads({ sort: 'hot' }).filter((r) => r.thread.id !== thread.id).slice(0, 3);
     return `<div class="narrow">
       <div class="thread-head">
@@ -373,7 +374,7 @@
     const box = $('#reply-box');
     if (!box || !location.hash.startsWith('#/thread/')) { slot.innerHTML = ''; return; }
     const me = S.currentUser();
-    slot.innerHTML = `<button class="replybar hide" id="replybar" data-act="focusReply" aria-label="返信を書く">${ico('chat')}<span>${me ? '返信を書く…' : 'はじめて返信する'}</span>${me ? `<span class="chip-pt">+${R.reply}pt</span>` : ''}</button>`;
+    slot.innerHTML = `<button class="replybar hide" id="replybar" data-act="focusReply" aria-label="返信を書く">${ico('chat')}<span>${me ? '返信を書く…' : 'ログインして返信する'}</span>${me ? `<span class="chip-pt">+${R.reply}pt</span>` : ''}</button>`;
     if ('IntersectionObserver' in window) {
       const bar = $('#replybar');
       io = new IntersectionObserver((es) => bar.classList.toggle('hide', es[0].isIntersecting), { threshold: 0.15 });
@@ -383,10 +384,10 @@
     }
   }
 
-  // ---------- 画面: 新規スレッド / はじめる ----------
+  // ---------- 画面: 新規スレッド / ログイン / 登録 ----------
   function viewNew() {
     const me = S.currentUser();
-    if (!me) return needLogin('スレッドを立てるには、ニックネームを決めて はじめてください。');
+    if (!me) return needLogin('スレッドを立てるにはログインが必要です。');
     pageTitle = 'スレッドを立てる - ひろば掲示板';
     const d = getDraft();
     return `<div class="narrow stack">
@@ -408,34 +409,108 @@
 
   function authSide(title) {
     return `<aside class="card auth-side"><h2>${title}</h2>
-      <ul><li><b>+${R.register}pt</b>はじめるボーナス</li><li><b>+${R.thread}pt</b>スレッドを立てる</li><li><b>+${R.reply}pt</b>返信する</li><li><b>+${R.best}pt</b>ベストアンサー</li></ul></aside>`;
+      <ul><li><b>+${R.register}pt</b>登録ボーナス</li><li><b>+${R.thread}pt</b>スレッドを立てる</li><li><b>+${R.reply}pt</b>返信する</li><li><b>+${R.best}pt</b>ベストアンサー</li></ul></aside>`;
   }
 
-  // ニックネームだけで始める(メール・パスワードなし)
+  const alreadyIn = '<div class="card narrow empty"><span class="big">👋</span><p>すでにログインしています。</p><a class="btn brand" href="#/">ホームへ</a></div>';
+
+  // 新規登録(メールアドレス+ニックネーム+パスワード。確認メールのリンクで認証)
   function viewRegister() {
-    pageTitle = 'はじめる - ひろば掲示板';
-    if (S.currentUser()) {
-      return '<div class="card narrow empty"><span class="big">👋</span><p>すでに はじめています。</p><a class="btn brand" href="#/">ホームへ</a></div>';
-    }
+    pageTitle = '新規登録 - ひろば掲示板';
+    if (S.currentUser()) return alreadyIn;
     return `<div class="auth">
-      ${authSide('ニックネームを決めるだけ。<br>すぐに投稿できます。')}
-      <form class="card stack auth-form" data-form="register" autocomplete="off">
-        <h1>はじめる</h1>
-        <div class="field"><label for="rg-nick">ニックネーム(2〜16文字・みんなに公開されます)</label>
-          <input type="text" id="rg-nick" name="nickname" maxlength="16" autocomplete="nickname" placeholder="例:あおい" required></div>
-        <button class="btn cta lg block">はじめて +${R.register}pt もらう</button>
-        <div class="notice" role="note">
-          ⚠️ メールやパスワードは使いません。アカウントは<b>このブラウザに保存</b>されます。
-          ログアウトしたり、ブラウザのデータを消したり、別の端末に変えたりすると、<b>同じアカウントには戻れません</b>(ポイントも失われます)。
-        </div>
-        <p class="small muted" style="margin:0">個人情報は、ニックネームにも投稿にも書かないでください。</p>
+      ${authSide('登録して、<br>ポイントをためよう。')}
+      <form class="card stack auth-form" data-form="register" autocomplete="on">
+        <h1>新規登録</h1>
+        <div class="field"><label for="rg-email">メールアドレス</label><input type="email" id="rg-email" name="email" autocomplete="email" required></div>
+        <div class="field"><label for="rg-nick">ニックネーム(2〜16文字・みんなに公開されます)</label><input type="text" id="rg-nick" name="nickname" maxlength="16" autocomplete="nickname" required></div>
+        <div class="field"><label for="rg-pw">パスワード(8文字以上)</label><input type="password" id="rg-pw" name="password" autocomplete="new-password" minlength="8" maxlength="72" required></div>
+        <button class="btn cta lg block">登録して +${R.register}pt もらう</button>
+        <p class="small muted" style="margin:0">登録すると、確認メールが届きます。<b>メール内のリンクを開いて</b>認証を完了してください。メールアドレスは公開されません。</p>
+        <p class="small muted" style="margin:0">登録済みの方は<a href="#/login">ログイン</a>へ。</p>
+      </form></div>`;
+  }
+
+  function viewLogin() {
+    pageTitle = 'ログイン - ひろば掲示板';
+    if (S.currentUser()) return alreadyIn;
+    return `<div class="auth">
+      ${authSide('おかえりなさい。<br>今日もひとこと、どうですか?')}
+      <form class="card stack auth-form" data-form="login">
+        <h1>ログイン</h1>
+        ${state.notice ? `<div class="notice" role="status">✉️ ${esc(state.notice)}</div>` : ''}
+        <div class="field"><label for="li-email">メールアドレス</label><input type="email" id="li-email" name="email" autocomplete="email" required></div>
+        <div class="field"><label for="li-pw">パスワード</label><input type="password" id="li-pw" name="password" autocomplete="current-password" required></div>
+        <button class="btn cta lg block">ログイン</button>
+        <p class="small muted" style="margin:0;text-align:center"><a href="#/forgot">パスワードを忘れた方</a></p>
+        <p class="small muted" style="margin:0;text-align:center">はじめての方は<a href="#/register">新規登録</a>(+${R.register}pt)</p>
+      </form></div>`;
+  }
+
+  // パスワードを忘れたとき: 再設定用のメールを送る
+  function viewForgot() {
+    pageTitle = 'パスワードの再設定 - ひろば掲示板';
+    return `<div class="auth narrow" style="grid-template-columns:1fr">
+      <form class="card stack auth-form" data-form="forgot">
+        <h1>パスワードの再設定</h1>
+        <p class="muted small" style="margin:0">登録したメールアドレスを入力してください。パスワードを再設定するためのリンクをメールでお送りします。</p>
+        <div class="field"><label for="fg-email">メールアドレス</label><input type="email" id="fg-email" name="email" autocomplete="email" required></div>
+        <button class="btn cta lg block">再設定のメールを送る</button>
+        <p class="small muted" style="margin:0;text-align:center"><a href="#/login">ログインに戻る</a></p>
+      </form></div>`;
+  }
+
+  // 再設定メールのリンクから来たとき: 新しいパスワードを決める
+  function viewReset() {
+    pageTitle = '新しいパスワード - ひろば掲示板';
+    if (!S.currentUser()) {
+      return `<div class="card narrow empty"><span class="big">⏳</span><p>リンクの有効期限が切れているか、別のブラウザで開かれています。<br>もう一度、再設定のメールを送ってください。</p><a class="btn brand" href="#/forgot">再設定のメールを送る</a></div>`;
+    }
+    return `<div class="auth narrow" style="grid-template-columns:1fr">
+      <form class="card stack auth-form" data-form="newpassword">
+        <h1>新しいパスワード</h1>
+        <div class="field"><label for="np-pw">新しいパスワード(8文字以上)</label><input type="password" id="np-pw" name="password" autocomplete="new-password" minlength="8" maxlength="72" required></div>
+        <button class="btn cta lg block">パスワードを変更する</button>
       </form></div>`;
   }
 
   // ---------- 画面: マイページ ----------
+  // アカウント設定: メールアドレス・ニックネーム・パスワード
+  function accountSection(user) {
+    const pending = user.pendingEmail
+      ? `<div class="notice" role="status">✉️ <b>${esc(user.pendingEmail)}</b> 宛てに確認メールを送りました。メール内のリンクを開くと完了します。</div>` : '';
+    const nickForm = `<form data-form="nickname" class="stack">
+        <div class="field"><label for="ac-nick">ニックネーム(2〜16文字・公開されます)</label>
+          <div class="row" style="flex-wrap:nowrap"><input type="text" id="ac-nick" name="nickname" maxlength="16" value="${esc(user.nickname)}" required style="flex:1"><button class="btn brand">変更</button></div></div>
+      </form>`;
+    if (user.isAnonymous) {
+      // 以前の「ニックネームだけ」で作ったアカウント: メールとパスワードを登録して引き継ぐ
+      return `<section class="card stack"><h2>アカウントの登録</h2>
+        <div class="notice" role="note">⚠️ このアカウントは、メールアドレスとパスワードを<b>登録していません</b>。このブラウザにだけ保存されていて、ログアウトやブラウザのデータ削除で<b>戻れなくなります</b>(ポイント・管理者権限も失われます)。
+          下のフォームで登録すると、今のポイントのまま、別の端末でもログインできるようになります。</div>
+        ${pending}
+        <form data-form="upgrade" class="stack">
+          <div class="field"><label for="up-email">メールアドレス</label><input type="email" id="up-email" name="email" autocomplete="email" required></div>
+          <div class="field"><label for="up-pw">パスワード(8文字以上)</label><input type="password" id="up-pw" name="password" autocomplete="new-password" minlength="8" maxlength="72" required></div>
+          <button class="btn cta">登録して引き継ぐ</button>
+        </form>
+        ${nickForm}
+      </section>`;
+    }
+    return `<section class="card stack"><h2>アカウント</h2>
+      <div><span class="small muted">メールアドレス(公開されません)</span><br><b>${esc(user.email || '未登録')}</b></div>
+      ${pending}
+      ${nickForm}
+      <form data-form="newpassword" class="stack">
+        <div class="field"><label for="ac-pw">新しいパスワード(8文字以上)</label>
+          <div class="row" style="flex-wrap:nowrap"><input type="password" id="ac-pw" name="password" autocomplete="new-password" minlength="8" maxlength="72" required style="flex:1"><button class="btn brand">変更</button></div></div>
+      </form>
+    </section>`;
+  }
+
   function viewMe() {
     const prof = S.myProfile();
-    if (!prof) return needLogin('マイページを見るには、ニックネームを決めて はじめてください。');
+    if (!prof) return needLogin('マイページを見るにはログインが必要です。');
     pageTitle = 'マイページ - ひろば掲示板';
     const { user, stats, badges, history, threads } = prof;
     const lv = user.level;
@@ -462,7 +537,7 @@
       <section class="card"><h2>自分が立てたスレッド</h2>
         ${threads.length ? `<ul class="list">${threads.map((t) => `<li><a class="grow" href="#/thread/${esc(t.id)}">${esc(t.title)}</a><span class="small muted">${ago(t.createdAt)}</span></li>`).join('')}</ul>` : '<p class="muted">まだスレッドを立てていません。<a href="#/new">最初の1本を立てる →</a></p>'}
       </section>
-      <div class="notice" role="note">⚠️ このアカウントは<b>このブラウザに保存</b>されています(メール・パスワードは使っていません)。ブラウザのデータを消したり、別の端末に変えたりすると、同じアカウントには戻れません。</div>
+      ${accountSection(user)}
       <div class="row" style="justify-content:center">
         ${user.isAdmin ? `<a class="btn" href="#/admin">${ico('shield')}管理ページ</a>` : ''}
         <button class="btn ghost" data-act="logout">${ico('logout')}ログアウト</button>
@@ -491,7 +566,7 @@
       <section class="card">${rows.length
         ? (rest.length ? `<ol class="list">${rest.map((r, i) => `<li class="${me && me.id === r.user.id ? 'me-row' : ''}"><span class="rank-no">${i + 4}</span>${avatar(r.user, 'md')}<span class="grow">${userLine(r.user)}</span><span class="pt">${r.points}pt</span></li>`).join('')}</ol>` : '<p class="muted" style="margin:0;text-align:center">4位以降はまだいません。あなたも参加しよう!</p>')
         : '<div class="empty"><span class="big">🏁</span>まだランキングに載るユーザーがいません。<br>最初のランカーになりませんか?</div>'}</section>
-      ${me ? '' : `<div class="card nudge" style="margin-top:14px"><span class="big">🚀</span><div class="grow"><b>あなたもランキングに参加しよう</b><br><span class="small muted">登録で +${R.register}pt からスタート。</span></div><a class="btn cta sm" href="#/register">無料で始める</a></div>`}
+      ${me ? '' : `<div class="card nudge" style="margin-top:14px"><span class="big">🚀</span><div class="grow"><b>あなたもランキングに参加しよう</b><br><span class="small muted">登録で +${R.register}pt からスタート。</span></div><a class="btn cta sm" href="#/register">無料で登録する</a></div>`}
     </div>`;
   }
 
@@ -605,8 +680,10 @@
         case undefined: html = viewHome(); break;
         case 'thread': html = viewThread(seg[1]); break;
         case 'new': html = viewNew(); break;
-        case 'login': // 以前のリンクが残っていても、はじめる画面に案内する
+        case 'login': html = viewLogin(); break;
         case 'register': html = viewRegister(); break;
+        case 'forgot': html = viewForgot(); break;
+        case 'reset': html = viewReset(); break;
         case 'me': html = viewMe(); break;
         case 'ranking': html = viewRanking(); break;
         case 'rules': html = viewRules(); break;
@@ -679,8 +756,9 @@
     sort(el) { state.sort = el.dataset.val; updateFeed(); },
     rank(el) { state.rank = el.dataset.val; return render(true); },
     async logout() {
-      // ニックネームだけのアカウントは、ログアウトすると二度と戻れない
-      if (!confirm('本当にログアウトしますか?\n\nメールやパスワードを使っていないため、ログアウトすると同じアカウント(ポイントも)には二度と戻れません。')) return;
+      // メール未登録の匿名アカウントは、ログアウトすると二度と戻れない
+      const u = S.currentUser();
+      if (u && u.isAnonymous && !confirm('本当にログアウトしますか?\n\nこのアカウントはメールアドレスとパスワードを登録していないため、ログアウトすると同じアカウント(ポイントも)には二度と戻れません。\n先にマイページで登録することをおすすめします。')) return;
       await S.logout();
       toast('ログアウトしました');
       await go('#/');
@@ -697,7 +775,7 @@
       await render(true);
     },
     report(el) {
-      if (!S.currentUser()) throw new Error('通報するには、先に「はじめる」でニックネームを決めてください');
+      if (!S.currentUser()) throw new Error('通報するにはログインが必要です');
       openReport(el.dataset.id);
     },
     useTopic() {
@@ -707,7 +785,7 @@
       setTimeout(() => { const b = $('#nt-body'); if (b) b.focus({ preventScroll: true }); }, 120);
     },
     replyTo(el) {
-      if (!S.currentUser()) throw new Error('返信するには、先に「はじめる」でニックネームを決めてください');
+      if (!S.currentUser()) throw new Error('返信するにはログインが必要です');
       const ta = $('#reply-body');
       if (!ta) return;
       const tag = '>>' + el.dataset.n + ' ';
@@ -717,7 +795,7 @@
       ta.focus({ preventScroll: true });
     },
     focusReply() {
-      if (!S.currentUser()) { go('#/register'); return; }
+      if (!S.currentUser()) { go('#/login'); return; }
       const ta = $('#reply-body');
       if (!ta) return;
       ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -741,9 +819,45 @@
   // ---------- 操作(フォーム送信) ----------
   const forms = {
     async register(fd) {
-      await S.register({ nickname: fd.get('nickname') });
-      toast('ようこそ!', '', '🎉');
+      const r = await S.register({ email: fd.get('email'), nickname: fd.get('nickname'), password: fd.get('password') });
+      if (r.confirmed) {
+        toast('登録しました。ようこそ!', '', '🎉');
+        await go('#/');
+      } else {
+        // メール認証が必要: 確認メールのリンクを開いてから、ログインしてもらう
+        state.notice = '確認メールを送信しました。メール内のリンクを開いて認証を完了してから、ログインしてください。(届かない場合は、迷惑メールフォルダもご確認ください)';
+        await go('#/login');
+      }
+    },
+    async login(fd) {
+      await S.login(fd.get('email'), fd.get('password'));
+      state.notice = '';
+      toast('ログインしました', '', '👋');
       await go('#/');
+    },
+    async forgot(fd) {
+      await S.sendResetEmail(fd.get('email'));
+      try { localStorage.setItem(RECOVERY_KEY, String(Date.now())); } catch (e) { /* 保存できなくても続行 */ }
+      state.notice = '再設定用のリンクをメールでお送りしました(登録済みのアドレスの場合)。メール内のリンクを、このブラウザで開いてください。';
+      await go('#/login');
+    },
+    async newpassword(fd, form) {
+      await S.updatePassword(fd.get('password'));
+      form.reset();
+      toast('パスワードを変更しました', '', '🔒');
+      if (location.hash === '#/reset') await go('#/me');
+      else await render(true);
+    },
+    async nickname(fd) {
+      await S.changeNickname(fd.get('nickname'));
+      toast('ニックネームを変更しました');
+      await render(true);
+    },
+    async upgrade(fd, form) {
+      await S.upgradeAccount({ email: fd.get('email'), password: fd.get('password') });
+      form.reset();
+      toast('確認メールを送りました。リンクを開くと完了します', '', '✉️');
+      await render(true);
     },
     async newthread(fd) {
       const r = await S.createThread({ category: fd.get('category'), title: fd.get('title'), body: fd.get('body') });
@@ -830,6 +944,10 @@
 
   // ---------- 起動 ----------
   (async function boot() {
+    // メールのリンク(確認・パスワード再設定)から戻ってきたときは、URL に ?code=... が付いている。
+    // ライブラリが S.init() の中で処理するので、その後で URL から消す。
+    const fromMail = /[?&]code=/.test(location.search);
+    const mailError = /[?&]error(_code|_description)?=/.test(location.search);
     renderHeader('');
     app.innerHTML = loadingHtml();
     if (S.ready) {
@@ -839,8 +957,23 @@
       } catch (e) {
         toast(e.message || String(e), 'err');
       }
-      // 別のタブではじめた/ログアウトしたときに追従する
+      // 別のタブでログイン/ログアウトしたときに追従する
       S.onAuthChange(() => render(true));
+    }
+    if (fromMail || mailError) {
+      history.replaceState(null, '', location.pathname + (location.hash || '#/'));
+      let recovery = null;
+      try { recovery = localStorage.getItem(RECOVERY_KEY); localStorage.removeItem(RECOVERY_KEY); } catch (e) { /* 無視 */ }
+      if (mailError) {
+        toast('リンクの有効期限が切れているか、すでに使われています。もう一度お試しください', 'err');
+      } else if (S.currentUser() && recovery) {
+        location.hash = '#/reset'; // パスワード再設定のリンク → 新しいパスワードを決める画面へ
+      } else if (S.currentUser()) {
+        toast('メールの確認が完了しました', '', '✅');
+      } else {
+        state.notice = 'メールの確認が完了しました。ログインしてください。';
+        location.hash = '#/login';
+      }
     }
     await render(false);
     flush();
