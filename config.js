@@ -7,6 +7,6 @@
 // service_role キー / secret キーは強い権限を持つので、絶対にここへ書かないでください。
 // 手順は supabase/セットアップ手順.md を参照。
 window.KEIJIBAN_CONFIG = {
-  supabaseUrl: '',
-  supabaseAnonKey: '',
+  supabaseUrl: 'https://mcmuagvjxjnjoskozxqv.supabase.co',
+  supabaseAnonKey: 'sb_publishable_SaPS6AMeFKvSX2Zx13S96Q_PztsuS-q',
 };
