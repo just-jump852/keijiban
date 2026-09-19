@@ -393,6 +393,11 @@ input[type=search] { padding-left: 40px; }
 .auth-form h1 { margin-bottom: 14px; }
 @media (min-width: 760px) { .auth { grid-template-columns: 1fr 1fr; align-items: stretch; } .auth-form { padding: 28px; } }
 
+/* ============ 読み込み中 ============ */
+.loading { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 40vh; color: var(--muted); font-weight: 600; }
+.spinner { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--brand); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* ============ 管理 ============ */
 .admin-item { display: block !important; }
 

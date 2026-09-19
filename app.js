@@ -15,7 +15,7 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const nl2br = (s) => esc(s).replace(/\n/g, '<br>');
 
-  const state = { cat: '', q: '', sort: 'new', rank: 'total' };
+  const state = { cat: '', q: '', sort: 'new', rank: 'total', notice: '' };
   let pageTitle = 'ひろば掲示板';
   let bumpUntil = 0; // ポイントが増えた直後、ヘッダーのポイント表示を弾ませる
   let popId = null; // いいねした投稿(ハートを弾ませる)
@@ -126,7 +126,7 @@
   function renderHeader(seg) {
     const me = S.currentUser();
     const nav = (href, label, key) => `<a href="${href}" class="${seg === key ? 'on' : ''}">${label}</a>`;
-    const acct = me
+    const acct = !S.ready ? '' : me
       ? `<a class="pchip ${Date.now() < bumpUntil ? 'bump' : ''}" href="#/me" aria-label="マイページ(${me.points}ポイント)">${ringAvatar(me, 'sm')}<span class="pchip-t"><b>Lv.${me.level.lv}</b><small>${me.points}pt</small></span></a>
          <a class="btn cta sm desk" href="#/new">${ico('pen')}投稿する</a>`
       : `<a class="btn ghost sm" href="#/login">ログイン</a><a class="btn cta sm" href="#/register">無料で始める</a>`;
@@ -412,6 +412,7 @@
       ${authSide('おかえりなさい。<br>今日もひとこと、どうですか?')}
       <form class="card stack auth-form" data-form="login">
         <h1>ログイン</h1>
+        ${state.notice ? `<div class="notice" role="status">✉️ ${esc(state.notice)}</div>` : ''}
         <div class="field"><label for="li-email">メールアドレス</label><input type="email" id="li-email" name="email" autocomplete="email" required></div>
         <div class="field"><label for="li-pw">パスワード</label><input type="password" id="li-pw" name="password" autocomplete="current-password" required></div>
         <button class="btn cta lg block">ログイン</button>
@@ -550,18 +551,49 @@
           <button class="btn brand">保存する</button>
         </form>
       </section>
-      <section class="card"><h2>データの初期化</h2>
-        <p class="small muted">すべての投稿・アカウントを消して、サンプルデータに戻します。元に戻せません。</p>
-        <button class="btn danger" data-act="adminReset">初期化する</button>
-      </section>
     </div>`;
   }
 
+  // ---------- 画面: 未設定・読み込み中・エラー ----------
+  function viewSetup() {
+    pageTitle = '接続設定が必要です - ひろば掲示板';
+    const why = S.configProblem === 'library'
+      ? 'Supabase のライブラリ(vendor/supabase-js.umd.js)を読み込めませんでした。'
+      : 'config.js に Supabase の接続情報(Project URL と anon キー)が設定されていません。';
+    return `<div class="card narrow empty"><span class="big">🔧</span>
+      <h2 style="margin-bottom:8px">Supabase の設定が必要です</h2>
+      <p>${why}</p>
+      <p class="small muted">手順は <b>supabase/セットアップ手順.md</b> を参照してください。</p></div>`;
+  }
+  const loadingHtml = () => '<div class="loading" role="status" aria-live="polite"><span class="spinner"></span>読み込み中…</div>';
+  function loadErrorHtml(e) {
+    return `<div class="card narrow empty"><span class="big">📡</span><p>${esc(e.message || e)}</p>
+      <button class="btn brand" data-act="retry">もう一度読み込む</button></div>`;
+  }
+
   // ---------- ルーター ----------
-  function render(keepScroll) {
+  let renderToken = 0;
+  async function render(keepScroll) {
+    const token = ++renderToken;
     const hash = location.hash || '#/';
     const seg = hash.slice(1).split('/').filter(Boolean);
     pageTitle = 'ひろば掲示板';
+
+    if (!S.ready) {
+      renderHeader('');
+      app.innerHTML = viewSetup();
+      document.title = pageTitle;
+      return;
+    }
+
+    // ページ移動のときだけ、少し待たされたら「読み込み中」を出す(いいね等の再描画ではちらつかせない)
+    const loaderTimer = keepScroll ? 0 : setTimeout(() => {
+      if (token === renderToken) { app.classList.remove('enter'); app.innerHTML = loadingHtml(); }
+    }, 250);
+    let loadError = null;
+    try { await S.load(seg); } catch (e) { loadError = e; }
+    clearTimeout(loaderTimer);
+    if (token !== renderToken) return; // もっと新しい描画が始まっている
 
     // 再描画で入力中の内容(返信・本文)が消えないよう退避する
     const kept = {};
@@ -569,6 +601,7 @@
 
     let html;
     try {
+      if (loadError) throw loadError;
       switch (seg[0]) {
         case undefined: html = viewHome(); break;
         case 'thread': html = viewThread(seg[1]); break;
@@ -582,7 +615,8 @@
         default: html = notFound();
       }
     } catch (e) {
-      html = `<div class="card narrow empty"><span class="big">🙇</span>表示中にエラーが起きました。<br>${esc(e.message || e)}</div>`;
+      html = loadError ? loadErrorHtml(e)
+        : `<div class="card narrow empty"><span class="big">🙇</span>表示中にエラーが起きました。<br>${esc(e.message || e)}</div>`;
     }
     renderHeader(seg[0] || '');
     app.innerHTML = html;
@@ -597,8 +631,9 @@
   }
 
   function go(hash) {
-    if (location.hash === hash) render(false);
-    else location.hash = hash;
+    if (location.hash === hash) return render(false);
+    location.hash = hash;
+    return Promise.resolve();
   }
 
   function updateCounter(t) {
@@ -643,13 +678,18 @@
   const actions = {
     cat(el) { state.cat = el.dataset.val; updateFeed(); },
     sort(el) { state.sort = el.dataset.val; updateFeed(); },
-    rank(el) { state.rank = el.dataset.val; render(true); },
-    logout() { S.logout(); toast('ログアウトしました'); go('#/'); },
-    like(el) { popId = S.toggleLike(el.dataset.id) ? el.dataset.id : null; render(true); },
-    best(el) {
-      const on = S.setBest(el.dataset.thread, el.dataset.id);
+    rank(el) { state.rank = el.dataset.val; return render(true); },
+    async logout() { await S.logout(); toast('ログアウトしました'); await go('#/'); },
+    retry() { return render(false); },
+    async like(el) {
+      const liked = await S.toggleLike(el.dataset.id);
+      popId = liked ? el.dataset.id : null;
+      await render(true);
+    },
+    async best(el) {
+      const on = await S.setBest(el.dataset.thread, el.dataset.id);
       toast(on ? 'ベストアンサーに選びました' : 'ベストアンサーを取り消しました', '', on ? '🏆' : '');
-      render(true);
+      await render(true);
     },
     report(el) {
       if (!S.currentUser()) throw new Error('ログインが必要です');
@@ -689,53 +729,53 @@
     closeModal() { closeModal(); },
     closeBackdrop(el, e) { if (e.target === el) closeModal(); },
     closeCelebrate(el, e) { if (e.target === el || el.dataset.force) { clearTimeout(celebrate.t); $('#celebrate').innerHTML = ''; } },
-    adminHide(el) { S.hidePost(el.dataset.id); toast('非表示にしました'); render(true); },
-    adminRestore(el) { S.restorePost(el.dataset.id); toast('復元しました'); render(true); },
-    adminReset() {
-      if (!confirm('すべての投稿とアカウントを消して、サンプルデータに戻します。よろしいですか?')) return;
-      S.resetAll();
-      clearDraft();
-      toast('初期化しました');
-      go('#/');
-    },
+    async adminHide(el) { await S.hidePost(el.dataset.id); toast('非表示にしました'); await render(true); },
+    async adminRestore(el) { await S.restorePost(el.dataset.id); toast('復元しました'); await render(true); },
   };
 
   // ---------- 操作(フォーム送信) ----------
   const forms = {
     async login(fd) {
       await S.login(fd.get('email'), fd.get('password'));
+      state.notice = '';
       toast('ログインしました', '', '👋');
-      go('#/');
+      await go('#/');
     },
     async register(fd) {
-      await S.register({ email: fd.get('email'), nickname: fd.get('nickname'), password: fd.get('password') });
-      toast('登録しました。ようこそ!', '', '🎉');
-      go('#/');
+      const r = await S.register({ email: fd.get('email'), nickname: fd.get('nickname'), password: fd.get('password') });
+      if (r.confirmed) {
+        toast('登録しました。ようこそ!', '', '🎉');
+        await go('#/');
+      } else {
+        // メール確認が必要な設定のとき: 確認メールのリンクを開いてからログインしてもらう
+        state.notice = '確認メールを送信しました。メール内のリンクを開いて登録を完了してから、ログインしてください。(届かない場合は迷惑メールフォルダもご確認ください)';
+        await go('#/login');
+      }
     },
-    newthread(fd) {
-      const r = S.createThread({ category: fd.get('category'), title: fd.get('title'), body: fd.get('body') });
+    async newthread(fd) {
+      const r = await S.createThread({ category: fd.get('category'), title: fd.get('title'), body: fd.get('body') });
       clearDraft();
       if (r.note) toast(r.note);
-      go('#/thread/' + r.thread.id);
+      await go('#/thread/' + r.thread.id);
     },
-    reply(fd, form) {
-      const r = S.createReply(fd.get('threadId'), fd.get('body'));
+    async reply(fd, form) {
+      const r = await S.createReply(fd.get('threadId'), fd.get('body'));
       if (r.note) toast(r.note);
       form.reset();
-      render(true);
+      await render(true);
       const last = app.querySelector('.post:last-of-type');
       if (last) last.scrollIntoView({ behavior: 'smooth', block: 'center' });
     },
-    report(fd) {
-      S.report(fd.get('postId'), fd.get('reason'));
+    async report(fd) {
+      await S.report(fd.get('postId'), fd.get('reason'));
       closeModal();
       toast('通報しました。ご協力ありがとうございます');
-      render(true);
+      await render(true);
     },
-    ng(fd) {
-      S.setNgWords(fd.get('words'));
+    async ng(fd) {
+      await S.setNgWords(fd.get('words'));
       toast('NGワードを保存しました');
-      render(true);
+      await render(true);
     },
   };
 
@@ -748,7 +788,10 @@
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-act]');
     if (!el || !actions[el.dataset.act]) return;
-    run(() => actions[el.dataset.act](el, e));
+    // 通信中の二重クリック(いいねが2回押される等)を防ぐ
+    if (el.dataset.busy) return;
+    el.dataset.busy = '1';
+    run(() => actions[el.dataset.act](el, e)).finally(() => { delete el.dataset.busy; });
   });
 
   document.addEventListener('submit', (e) => {
@@ -792,17 +835,26 @@
     render(false);
   });
 
-  // 別タブで更新されたとき(ログイン状態・投稿)に追従する
-  window.addEventListener('storage', (e) => {
-    if (e.key === S.KEYS.data || e.key === S.KEYS.session) {
-      S.reload();
-      render(true);
-    }
-  });
-
   // ---------- 起動 ----------
-  S.dailyBonus();
-  render(false);
-  flush();
-  renderHeader(location.hash.slice(1).split('/').filter(Boolean)[0] || '');
+  (async function boot() {
+    // メール確認から戻ったときの ?code=... はライブラリが処理するので、URL からは消しておく
+    if (/[?&](code|error|error_description)=/.test(location.search)) {
+      history.replaceState(null, '', location.pathname + (location.hash || '#/'));
+    }
+    renderHeader('');
+    app.innerHTML = loadingHtml();
+    if (S.ready) {
+      try {
+        await S.init();
+        await S.dailyBonus();
+      } catch (e) {
+        toast(e.message || String(e), 'err');
+      }
+      // 別のタブでログイン/ログアウトしたときに追従する
+      S.onAuthChange(() => render(true));
+    }
+    await render(false);
+    flush();
+    renderHeader(location.hash.slice(1).split('/').filter(Boolean)[0] || '');
+  })();
 })();
