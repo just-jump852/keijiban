@@ -81,6 +81,11 @@
     try { localStorage.removeItem(DRAFT); } catch (e) { /* 無視 */ }
   }
   function saveDraftFrom(form) {
+    // 文字が入っている間は投稿欄を開いたままにする。
+    // (フォーカスが外れた瞬間に閉じると、Safari などで「投稿する」ボタンを押した時にボタンが消えて押せなくなる)
+    const t = form.elements.title;
+    const b = form.elements.body;
+    form.classList.toggle('has-draft', !!((t && t.value.trim()) || (b && b.value.trim())));
     if (Date.now() < draftLock || !form.isConnected) return;
     const fd = new FormData(form);
     setDraft({ category: fd.get('category'), title: fd.get('title'), body: fd.get('body') });
