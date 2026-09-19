@@ -15,7 +15,7 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const nl2br = (s) => esc(s).replace(/\n/g, '<br>');
 
-  const state = { cat: '', q: '', sort: 'new', rank: 'total', notice: '' };
+  const state = { cat: '', q: '', sort: 'new', rank: 'total' };
   let pageTitle = 'ひろば掲示板';
   let bumpUntil = 0; // ポイントが増えた直後、ヘッダーのポイント表示を弾ませる
   let popId = null; // いいねした投稿(ハートを弾ませる)
@@ -129,7 +129,7 @@
     const acct = !S.ready ? '' : me
       ? `<a class="pchip ${Date.now() < bumpUntil ? 'bump' : ''}" href="#/me" aria-label="マイページ(${me.points}ポイント)">${ringAvatar(me, 'sm')}<span class="pchip-t"><b>Lv.${me.level.lv}</b><small>${me.points}pt</small></span></a>
          <a class="btn cta sm desk" href="#/new">${ico('pen')}投稿する</a>`
-      : `<a class="btn ghost sm" href="#/login">ログイン</a><a class="btn cta sm" href="#/register">無料で始める</a>`;
+      : `<a class="btn cta sm" href="#/register">はじめる</a>`;
     $('#header').innerHTML = `<div class="wrap bar">
       <a class="brand" href="#/"><span class="logo"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-6l-4 3.5V17H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg></span>ひろば</a>
       <nav class="nav desk" aria-label="ページ">${nav('#/', 'ホーム', '')}${nav('#/ranking', 'ランキング', 'ranking')}${nav('#/rules', 'ポイントのしくみ', 'rules')}${me && me.isAdmin ? nav('#/admin', '管理', 'admin') : ''}</nav>
@@ -139,7 +139,7 @@
     const tab = (href, icon, label, key) => `<a href="${href}" class="${seg === key ? 'on' : ''}" ${seg === key ? 'aria-current="page"' : ''}>${ico(icon)}<span>${label}</span></a>`;
     $('#tabbar').innerHTML = `${tab('#/', 'home', 'ホーム', '')}${tab('#/ranking', 'trophy', 'ランキング', 'ranking')}
       <a class="fab" href="#/new" aria-label="スレッドを立てる">${ico('plus')}</a>
-      ${tab('#/rules', 'gift', 'ポイント', 'rules')}${me ? tab('#/me', 'user', 'マイページ', 'me') : tab('#/login', 'user', 'ログイン', 'login')}`;
+      ${tab('#/rules', 'gift', 'ポイント', 'rules')}${me ? tab('#/me', 'user', 'マイページ', 'me') : tab('#/register', 'user', 'はじめる', 'register')}`;
   }
 
   // ---------- 共通ブロック ----------
@@ -171,7 +171,7 @@
 
   function needLogin(msg) {
     return `<div class="card narrow empty"><span class="big">🔑</span><p>${esc(msg)}</p>
-      <div class="row" style="justify-content:center"><a class="btn cta" href="#/login">ログイン</a><a class="btn" href="#/register">新規登録で +${R.register}pt</a></div></div>`;
+      <div class="row" style="justify-content:center"><a class="btn cta" href="#/register">はじめる +${R.register}pt</a></div></div>`;
   }
   function notFound() {
     return '<div class="card narrow empty"><span class="big">🧭</span><p>ページが見つかりませんでした。</p><a class="btn brand" href="#/">ホームに戻る</a></div>';
@@ -232,7 +232,7 @@
     return `<section class="card hero">
       <h1>あなたの一言が、<br>誰かの<em>ヒント</em>になる。</h1>
       <p>投稿・返信・いいねでポイントがたまる、みんなの意見交換ひろば。ゆるく、気軽に、話してみませんか?</p>
-      <div class="row"><a class="btn light lg" href="#/register">無料で始めて +${R.register}pt</a><a class="btn ghost" style="color:#fff;border-color:rgba(255,255,255,.5)" href="#/login">ログイン</a></div>
+      <div class="row"><a class="btn light lg" href="#/register">ニックネームだけで はじめる +${R.register}pt</a></div>
       <ul class="hero-points"><li><b>+${R.thread}</b>スレッドを立てる</li><li><b>+${R.reply}</b>返信する</li><li><b>+${R.best}</b>ベストアンサー</li></ul>
     </section>`;
   }
@@ -257,8 +257,8 @@
 
   function joinCard() {
     return `<section class="card join"><h3>ポイントをためよう</h3>
-      <ul><li>登録するだけで +${R.register}pt</li><li>投稿・返信・いいねでポイントが増える</li><li>レベルアップ・ランキングで称号をゲット</li></ul>
-      <a class="btn cta block" href="#/register">無料で始める</a><p class="small muted" style="margin:10px 0 0;text-align:center">登録済みの方は<a href="#/login">ログイン</a></p></section>`;
+      <ul><li>ニックネームを決めるだけで +${R.register}pt</li><li>投稿・返信・いいねでポイントが増える</li><li>レベルアップ・ランキングで称号をゲット</li></ul>
+      <a class="btn cta block" href="#/register">はじめる</a></section>`;
   }
 
   function rankCard() {
@@ -345,8 +345,8 @@
           <div class="row between"><span class="small muted">Ctrl+Enter でも送信できます</span>
             <button class="btn cta">返信する<span class="chip-pt">+${R.reply}pt</span></button></div>
         </form>`
-      : `<div class="card replybox" id="reply-box"><p style="margin:0 0 12px"><b>返信するにはログインが必要です。</b><br><span class="muted small">登録すると ${R.register}pt もらえます。</span></p>
-          <div class="row"><a class="btn cta" href="#/register">無料で始める</a><a class="btn" href="#/login">ログイン</a></div></div>`;
+      : `<div class="card replybox" id="reply-box"><p style="margin:0 0 12px"><b>返信するには、ニックネームを決めて はじめてください。</b><br><span class="muted small">メール・パスワードは不要。はじめると ${R.register}pt もらえます。</span></p>
+          <div class="row"><a class="btn cta" href="#/register">はじめる</a></div></div>`;
     const others = S.listThreads({ sort: 'hot' }).filter((r) => r.thread.id !== thread.id).slice(0, 3);
     return `<div class="narrow">
       <div class="thread-head">
@@ -368,7 +368,7 @@
     const box = $('#reply-box');
     if (!box || !location.hash.startsWith('#/thread/')) { slot.innerHTML = ''; return; }
     const me = S.currentUser();
-    slot.innerHTML = `<button class="replybar hide" id="replybar" data-act="focusReply" aria-label="返信を書く">${ico('chat')}<span>${me ? '返信を書く…' : 'ログインして返信する'}</span>${me ? `<span class="chip-pt">+${R.reply}pt</span>` : ''}</button>`;
+    slot.innerHTML = `<button class="replybar hide" id="replybar" data-act="focusReply" aria-label="返信を書く">${ico('chat')}<span>${me ? '返信を書く…' : 'はじめて返信する'}</span>${me ? `<span class="chip-pt">+${R.reply}pt</span>` : ''}</button>`;
     if ('IntersectionObserver' in window) {
       const bar = $('#replybar');
       io = new IntersectionObserver((es) => bar.classList.toggle('hide', es[0].isIntersecting), { threshold: 0.15 });
@@ -378,10 +378,10 @@
     }
   }
 
-  // ---------- 画面: 新規スレッド / ログイン / 登録 ----------
+  // ---------- 画面: 新規スレッド / はじめる ----------
   function viewNew() {
     const me = S.currentUser();
-    if (!me) return needLogin('スレッドを立てるにはログインが必要です。');
+    if (!me) return needLogin('スレッドを立てるには、ニックネームを決めて はじめてください。');
     pageTitle = 'スレッドを立てる - ひろば掲示板';
     const d = getDraft();
     return `<div class="narrow stack">
@@ -403,41 +403,34 @@
 
   function authSide(title) {
     return `<aside class="card auth-side"><h2>${title}</h2>
-      <ul><li><b>+${R.register}pt</b>登録ボーナス</li><li><b>+${R.thread}pt</b>スレッドを立てる</li><li><b>+${R.reply}pt</b>返信する</li><li><b>+${R.best}pt</b>ベストアンサー</li></ul></aside>`;
+      <ul><li><b>+${R.register}pt</b>はじめるボーナス</li><li><b>+${R.thread}pt</b>スレッドを立てる</li><li><b>+${R.reply}pt</b>返信する</li><li><b>+${R.best}pt</b>ベストアンサー</li></ul></aside>`;
   }
 
-  function viewLogin() {
-    pageTitle = 'ログイン - ひろば掲示板';
-    return `<div class="auth">
-      ${authSide('おかえりなさい。<br>今日もひとこと、どうですか?')}
-      <form class="card stack auth-form" data-form="login">
-        <h1>ログイン</h1>
-        ${state.notice ? `<div class="notice" role="status">✉️ ${esc(state.notice)}</div>` : ''}
-        <div class="field"><label for="li-email">メールアドレス</label><input type="email" id="li-email" name="email" autocomplete="email" required></div>
-        <div class="field"><label for="li-pw">パスワード</label><input type="password" id="li-pw" name="password" autocomplete="current-password" required></div>
-        <button class="btn cta lg block">ログイン</button>
-        <p class="small muted" style="margin:0;text-align:center">はじめての方は<a href="#/register">新規登録</a>(+${R.register}pt)</p>
-      </form></div>`;
-  }
-
+  // ニックネームだけで始める(メール・パスワードなし)
   function viewRegister() {
-    pageTitle = '新規登録 - ひろば掲示板';
+    pageTitle = 'はじめる - ひろば掲示板';
+    if (S.currentUser()) {
+      return '<div class="card narrow empty"><span class="big">👋</span><p>すでに はじめています。</p><a class="btn brand" href="#/">ホームへ</a></div>';
+    }
     return `<div class="auth">
-      ${authSide('登録して、<br>ポイントをためよう。')}
-      <form class="card stack auth-form" data-form="register">
-        <h1>新規登録</h1>
-        <div class="field"><label for="rg-email">メールアドレス</label><input type="email" id="rg-email" name="email" autocomplete="email" required></div>
-        <div class="field"><label for="rg-nick">ニックネーム(2〜16文字・公開されます)</label><input type="text" id="rg-nick" name="nickname" maxlength="16" autocomplete="nickname" required></div>
-        <div class="field"><label for="rg-pw">パスワード(8文字以上)</label><input type="password" id="rg-pw" name="password" autocomplete="new-password" minlength="8" required></div>
-        <button class="btn cta lg block">登録して +${R.register}pt もらう</button>
-        <p class="small muted" style="margin:0">試作版のため確認メールは送信されません。メールアドレスは公開されず、この端末にのみ保存されます。すでに登録済みの方は<a href="#/login">ログイン</a>へ。</p>
+      ${authSide('ニックネームを決めるだけ。<br>すぐに投稿できます。')}
+      <form class="card stack auth-form" data-form="register" autocomplete="off">
+        <h1>はじめる</h1>
+        <div class="field"><label for="rg-nick">ニックネーム(2〜16文字・みんなに公開されます)</label>
+          <input type="text" id="rg-nick" name="nickname" maxlength="16" autocomplete="nickname" placeholder="例:あおい" required></div>
+        <button class="btn cta lg block">はじめて +${R.register}pt もらう</button>
+        <div class="notice" role="note">
+          ⚠️ メールやパスワードは使いません。アカウントは<b>このブラウザに保存</b>されます。
+          ログアウトしたり、ブラウザのデータを消したり、別の端末に変えたりすると、<b>同じアカウントには戻れません</b>(ポイントも失われます)。
+        </div>
+        <p class="small muted" style="margin:0">個人情報は、ニックネームにも投稿にも書かないでください。</p>
       </form></div>`;
   }
 
   // ---------- 画面: マイページ ----------
   function viewMe() {
     const prof = S.myProfile();
-    if (!prof) return needLogin('マイページを見るにはログインが必要です。');
+    if (!prof) return needLogin('マイページを見るには、ニックネームを決めて はじめてください。');
     pageTitle = 'マイページ - ひろば掲示板';
     const { user, stats, badges, history, threads } = prof;
     const lv = user.level;
@@ -464,6 +457,7 @@
       <section class="card"><h2>自分が立てたスレッド</h2>
         ${threads.length ? `<ul class="list">${threads.map((t) => `<li><a class="grow" href="#/thread/${esc(t.id)}">${esc(t.title)}</a><span class="small muted">${ago(t.createdAt)}</span></li>`).join('')}</ul>` : '<p class="muted">まだスレッドを立てていません。<a href="#/new">最初の1本を立てる →</a></p>'}
       </section>
+      <div class="notice" role="note">⚠️ このアカウントは<b>このブラウザに保存</b>されています(メール・パスワードは使っていません)。ブラウザのデータを消したり、別の端末に変えたりすると、同じアカウントには戻れません。</div>
       <div class="row" style="justify-content:center">
         ${user.isAdmin ? `<a class="btn" href="#/admin">${ico('shield')}管理ページ</a>` : ''}
         <button class="btn ghost" data-act="logout">${ico('logout')}ログアウト</button>
@@ -606,7 +600,7 @@
         case undefined: html = viewHome(); break;
         case 'thread': html = viewThread(seg[1]); break;
         case 'new': html = viewNew(); break;
-        case 'login': html = viewLogin(); break;
+        case 'login': // 以前のリンクが残っていても、はじめる画面に案内する
         case 'register': html = viewRegister(); break;
         case 'me': html = viewMe(); break;
         case 'ranking': html = viewRanking(); break;
@@ -679,7 +673,13 @@
     cat(el) { state.cat = el.dataset.val; updateFeed(); },
     sort(el) { state.sort = el.dataset.val; updateFeed(); },
     rank(el) { state.rank = el.dataset.val; return render(true); },
-    async logout() { await S.logout(); toast('ログアウトしました'); await go('#/'); },
+    async logout() {
+      // ニックネームだけのアカウントは、ログアウトすると二度と戻れない
+      if (!confirm('本当にログアウトしますか?\n\nメールやパスワードを使っていないため、ログアウトすると同じアカウント(ポイントも)には二度と戻れません。')) return;
+      await S.logout();
+      toast('ログアウトしました');
+      await go('#/');
+    },
     retry() { return render(false); },
     async like(el) {
       const liked = await S.toggleLike(el.dataset.id);
@@ -692,7 +692,7 @@
       await render(true);
     },
     report(el) {
-      if (!S.currentUser()) throw new Error('ログインが必要です');
+      if (!S.currentUser()) throw new Error('通報するには、先に「はじめる」でニックネームを決めてください');
       openReport(el.dataset.id);
     },
     useTopic() {
@@ -702,7 +702,7 @@
       setTimeout(() => { const b = $('#nt-body'); if (b) b.focus({ preventScroll: true }); }, 120);
     },
     replyTo(el) {
-      if (!S.currentUser()) throw new Error('返信するにはログインが必要です');
+      if (!S.currentUser()) throw new Error('返信するには、先に「はじめる」でニックネームを決めてください');
       const ta = $('#reply-body');
       if (!ta) return;
       const tag = '>>' + el.dataset.n + ' ';
@@ -712,7 +712,7 @@
       ta.focus({ preventScroll: true });
     },
     focusReply() {
-      if (!S.currentUser()) { go('#/login'); return; }
+      if (!S.currentUser()) { go('#/register'); return; }
       const ta = $('#reply-body');
       if (!ta) return;
       ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -735,22 +735,10 @@
 
   // ---------- 操作(フォーム送信) ----------
   const forms = {
-    async login(fd) {
-      await S.login(fd.get('email'), fd.get('password'));
-      state.notice = '';
-      toast('ログインしました', '', '👋');
-      await go('#/');
-    },
     async register(fd) {
-      const r = await S.register({ email: fd.get('email'), nickname: fd.get('nickname'), password: fd.get('password') });
-      if (r.confirmed) {
-        toast('登録しました。ようこそ!', '', '🎉');
-        await go('#/');
-      } else {
-        // メール確認が必要な設定のとき: 確認メールのリンクを開いてからログインしてもらう
-        state.notice = '確認メールを送信しました。メール内のリンクを開いて登録を完了してから、ログインしてください。(届かない場合は迷惑メールフォルダもご確認ください)';
-        await go('#/login');
-      }
+      await S.register({ nickname: fd.get('nickname') });
+      toast('ようこそ!', '', '🎉');
+      await go('#/');
     },
     async newthread(fd) {
       const r = await S.createThread({ category: fd.get('category'), title: fd.get('title'), body: fd.get('body') });
@@ -837,10 +825,6 @@
 
   // ---------- 起動 ----------
   (async function boot() {
-    // メール確認から戻ったときの ?code=... はライブラリが処理するので、URL からは消しておく
-    if (/[?&](code|error|error_description)=/.test(location.search)) {
-      history.replaceState(null, '', location.pathname + (location.hash || '#/'));
-    }
     renderHeader('');
     app.innerHTML = loadingHtml();
     if (S.ready) {
@@ -850,7 +834,7 @@
       } catch (e) {
         toast(e.message || String(e), 'err');
       }
-      // 別のタブでログイン/ログアウトしたときに追従する
+      // 別のタブではじめた/ログアウトしたときに追従する
       S.onAuthChange(() => render(true));
     }
     await render(false);

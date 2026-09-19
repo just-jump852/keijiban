@@ -105,9 +105,7 @@
     const status = err && err.status;
     if (err && err.code === 'PGRST202') return 'サーバーの設定が完了していません(supabase/schema.sql を実行してください)';
     if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(m)) return 'サーバーに接続できませんでした。通信状況を確認してください';
-    if (/Invalid login credentials/i.test(m)) return 'メールアドレスまたはパスワードが違います';
-    if (/Email not confirmed/i.test(m)) return 'メールアドレスの確認が完了していません。届いた確認メールのリンクを開いてください';
-    if (/User already registered/i.test(m)) return 'このメールアドレスは既に登録されています';
+    if (/Anonymous sign-ins are disabled/i.test(m)) return '現在、新規登録を受け付けていません(管理者にお知らせください)';
     if (/rate limit|too many requests|over_.*_rate_limit/i.test(m) || status === 429) return '短時間に操作が集中しています。しばらく待ってからもう一度お試しください';
     if (/JWT expired|invalid JWT/i.test(m)) return 'ログインの有効期限が切れました。もう一度ログインしてください';
     if (/Signups not allowed|signup.*disabled/i.test(m)) return '現在、新規登録を受け付けていません';
@@ -141,10 +139,7 @@
 
   function currentUser() {
     if (!me) return null;
-    return Object.assign(publicUser(me), {
-      email: session && session.user ? session.user.email || '' : '',
-      createdAt: me.createdAt,
-    });
+    return Object.assign(publicUser(me), { createdAt: me.createdAt });
   }
 
   function missions() {
@@ -207,44 +202,22 @@
     }
   }
 
+  // はじめる: ニックネームだけで始める(Supabase の匿名ログイン)。
+  // メールもパスワードも使わない。アカウントはこのブラウザにだけ保存され、
+  // ログアウトやブラウザのデータ削除をすると同じアカウントには戻れない。
   async function register(input) {
-    const email = String(input.email || '').trim().toLowerCase();
     const nickname = String(input.nickname || '').trim();
-    const password = String(input.password || '');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('メールアドレスの形式が正しくありません');
     if (nickname.length < 2 || nickname.length > 16) throw new Error('ニックネームは2〜16文字で入力してください');
-    if (password.length < 8) throw new Error('パスワードは8文字以上で入力してください');
     const msg = await rpc('nickname_available', { p_nick: nickname });
     if (msg) throw new Error(msg);
 
-    const back = location.href.split('#')[0].split('?')[0];
-    const { data, error } = await sb.auth.signUp({
-      email,
-      password,
-      options: { data: { nickname }, emailRedirectTo: back },
-    });
-    if (error) throw new Error(explain(error));
-    // メール確認が有効な場合、登録済みのアドレスでもエラーにならず identities が空で返る
-    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-      throw new Error('このメールアドレスは既に登録されています');
-    }
-    if (!data.session) return { confirmed: false };
-    session = data.session;
-    await refreshMe();
-    notices.push({ type: 'points', amount: RULES.register, reason: '新規登録ボーナス' });
-    return { confirmed: true };
-  }
-
-  async function login(email, password) {
-    const { data, error } = await sb.auth.signInWithPassword({
-      email: String(email || '').trim(),
-      password: String(password || ''),
-    });
+    const { data, error } = await sb.auth.signInAnonymously({ options: { data: { nickname } } });
     if (error) throw new Error(explain(error));
     session = data.session;
     lastUid = uidOf(session);
     await refreshMe();
-    await dailyBonus();
+    if (!me) throw new Error('アカウントの作成に失敗しました。もう一度お試しください');
+    notices.push({ type: 'points', amount: RULES.register, reason: '新規登録ボーナス' });
   }
 
   async function logout() {
@@ -440,7 +413,7 @@
     ready, configProblem,
     init, onAuthChange, load,
     currentUser, missions, todayTopic,
-    register, login, logout, dailyBonus,
+    register, logout, dailyBonus,
     listThreads, getThread, ranking, myProfile, listReported, getNgWords,
     createThread, createReply, toggleLike, setBest, report,
     hidePost, restorePost, setNgWords,
